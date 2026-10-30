@@ -18,7 +18,7 @@
 
 LearnHarness uses AI agents to plan and teach lessons from your current understanding to your goal. It builds a detailed picture of what you understand and how you reason. That picture is updated as you learn.
 
-Instead of just giving you an explanation, it uses your answers and thinking to decide what you need next. Teaching builds understanding one reasoning step at a time. Practice makes it usable. A persistent knowledge graph carries it across sessions.
+Your answers and reasoning guide what happens next: an explanation, a worked example, a question, or a hint. Support adapts as you learn, with fresh tasks to check whether you can use an idea independently. Separate practice sessions build on that understanding. A persistent knowledge graph carries ideas and their connections across sessions.
 
 ![LearnHarness teaching session](docs/assets/teaching-session.png)
 
@@ -26,10 +26,14 @@ Instead of just giving you an explanation, it uses your answers and thinking to 
 
 1. **Measure.** Before teaching, the agent finds where your understanding ends on each part the lesson depends on. Your answers, confidence, and thinking show it where to start.
 2. **Plan.** It works out a dependency map from that starting point to your goal. You can see the plan, and the lesson adapts when your understanding turns out different.
-3. **Teach.** Each step builds on something you already understand. You predict, get an explanation, and check your understanding. Confusions are repaired before anything is built on them. The aim is for the goal to feel obviously true, not merely familiar.
+3. **Teach.** The agent chooses explanations, worked examples, predictions, attempts, and checks based on your reasoning, with no fixed sequence. It targets gaps with hints and retries, explains directly when you need more support, and reduces guidance as you progress. Fresh tasks and meaningful variations check whether you can explain and apply the idea independently after receiving help.
 4. **Practice.** Separate sessions pose varied problems that require the right knowledge to come to mind without being named first. Problems and hints adapt to your reasoning.
 
 **Think out loud.** The thinking fields let you explain your reasoning, uncertainties, and reactions in your own words. This is how the agent gets a detailed picture rather than just a record of right and wrong answers. You can type or use dictation.
+
+**Try, get support, try again.** Teaching questions can use multiple choice or free response. Predictions and attempts keep the solution hidden while you work; checks can reveal it immediately or leave room for another attempt. You can request it with **Show solution**. A successful hinted retry shows progress; a fresh task checks independent understanding.
+
+See the [adaptive teaching guide](docs/adaptive-teaching.md) for details.
 
 The agent can also research questions in the background, create visual explanations, and build interactive demonstrations.
 
