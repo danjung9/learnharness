@@ -45,6 +45,7 @@ import {
 } from "./contracts/chat.ts";
 import { compactAnswerForModel, type QuestionAnswerData } from "./question-core.ts";
 import { activeCompactionOf, keptIndexFor } from "./compaction.ts";
+import { teachingQuestionView } from "./teaching-questions.ts";
 
 /** The hard-invariant wording for an aborted turn's unanswered calls —
  *  carried over verbatim from the pre-native era so the model's view
@@ -75,6 +76,7 @@ export interface LhMarkerMessage {
 		| "practice-thinking"
 		| "practice-next"
 		| "problem-dismissed"
+		| "solution-revealed"
 		| "compaction";
 	/** The model-facing text ("" for plan blocks — UI-only). */
 	content: string;
@@ -672,9 +674,9 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
  *  the tail — one question at a time, the dock's subject. */
 export function danglingQuestionOf(
 	messages: readonly LhMessage[],
-): { toolCallId: string; tool: string; input: unknown } | null {
+): { toolCallId: string; tool: string; displayTool?: "quiz" | "explain"; input: unknown } | null {
 	const question = questionOccurrenceOf(messages);
-	return question ? { toolCallId: question.toolCallId, tool: question.tool, input: question.input } : null;
+	return question ? { toolCallId: question.toolCallId, tool: question.tool, ...(question.displayTool ? { displayTool: question.displayTool } : {}), input: question.input } : null;
 }
 
 /** The same authority, retaining native boundaries for the client dock.
@@ -723,8 +725,11 @@ function questionOccurrenceOf(messages: readonly LhMessage[]): Omit<PendingQuest
 			if (block.type !== "toolCall") continue;
 			if (!(QUESTION_TOOLS as readonly string[]).includes(block.name)) continue;
 			if (answered.has(block.id)) continue;
+			const retry = block.name === "retry_question" ? teachingQuestionView(messages, block.id) : undefined;
+			if (block.name === "retry_question" && !retry) continue;
 			return {
-				toolCallId: block.id, tool: block.name, input: block.arguments,
+				toolCallId: block.id, tool: block.name, input: retry?.input ?? block.arguments,
+				...(retry ? { displayTool: retry.tool } : {}),
 				messageId: assistant.id, contentIndex,
 			};
 		}
@@ -818,7 +823,7 @@ export function nativeInputCause(message: AgentMessage, history: readonly AgentM
 	if (message.role === "system" || message.role === "assistant") return "neutral";
 	if (message.role === "custom") {
 		if (["probe-handoff", "subagent-steer", "subagent-abort"].includes(message.customType)) return "automatic";
-		if (["practice-thinking", "practice-next"].includes(message.customType)) return "learner";
+		if (["practice-thinking", "practice-next", "solution-revealed"].includes(message.customType)) return "learner";
 		return ["graph-context", "plan-block", "problem-dismissed", "compaction"].includes(message.customType) ? "neutral" : "unrecognizable";
 	}
 	if (message.role === "toolResult") {

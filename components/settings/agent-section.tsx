@@ -715,21 +715,18 @@ export function AgentSection({
 						</SettingsRow>
 					);
 				})()}
-				{/* The quizzing mechanic (owner 2026-09-27): segmented — exactly one
-				    of Multiple choice / Free recall is active; the choice swaps which
-				    quizzing tool BOTH agents carry (prober checks + teach checks).
-				    Persisted as agent.tools.explain; absent = Multiple choice. */}
+				{/* Probing alone follows agent.tools.explain; teaching has both formats. */}
 				{(() => {
 					const free = agent?.tools?.explain === true;
 					return (
 						<SettingsRow
-							label="Quizzing"
-							hint="How both tutors check your understanding"
+							label="Probing format"
+							hint="How the tutor assesses your starting knowledge. Teaching uses both formats as needed."
 							testid="quiz-mechanics-row"
 						>
 							<div
 								role="radiogroup"
-								aria-label="Quizzing mechanics"
+								aria-label="Probing question format"
 								className="flex rounded-lg border border-border/60 bg-muted/30 p-0.5"
 								>
 								{(["choice", "free"] as const).map((m) => {

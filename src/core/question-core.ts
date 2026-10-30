@@ -206,7 +206,7 @@ export const quizInputBase = Type.Object({
 // path accepts) runs at the CALL BOUNDARY in the tool's execute:
 // quizInputProblems here, the per-session plan-nodeId validation in
 // tools.ts (it reads the live chat record, which this core never touches).
-export const QUIZ_QUESTION_TYPES = ["predict", "check"] as const;
+export const QUIZ_QUESTION_TYPES = ["predict", "attempt", "check"] as const;
 export type QuizQuestionType = (typeof QUIZ_QUESTION_TYPES)[number];
 
 /** Normalize a persisted quiz `type` (display seam): old records carry
@@ -217,35 +217,39 @@ export type QuizQuestionType = (typeof QUIZ_QUESTION_TYPES)[number];
 export function normalizeQuizType(raw: unknown): QuizQuestionType | undefined {
 	if (typeof raw !== "string") return undefined;
 	const v = stripModelValueDebris(raw);
-	return v === "predict" ? "predict" : v === "check" ? "check" : undefined;
+	return QUIZ_QUESTION_TYPES.find(type => type === v);
 }
 
-/** The reveal law as a pure predicate (owner 2026-10-03; explain joined
- *  2026-10-09): a teach-phase CHECK collapses behind the "Check your
- *  understanding" reveal — a prediction NEVER does (it precedes the
- *  teaching and gates it; collapsing it would invert the cycle), and
- *  neither do probe/plan questions or ask. Both teach quizzing tools
- *  (quiz and explain) obey the same law. chat.tsx calls this for its
- *  pending question; the reading-thinking field mounts on the same
- *  truth. Records that predate the `type` field carry none — they render
- *  as checks, the standing default. */
+/** New teaching calls declare their arrival independently of their role.
+ * Historical calls retain their recorded predict/check arrival behavior.
+ * This controls the reading gate, never solution disclosure. */
 export function questionNeedsReveal(tool: string, rawInput: unknown, phase: string): boolean {
 	if ((tool !== "quiz" && tool !== "explain") || phase !== "teach") return false;
+	const rawArrival = (rawInput as { arrival?: unknown } | null)?.arrival;
+	const arrival = typeof rawArrival === "string" ? stripModelValueDebris(rawArrival) : rawArrival;
+	if (arrival === "open" || arrival === "after_reading") return arrival === "after_reading";
 	return normalizeQuizType((rawInput as { type?: unknown } | null)?.type) !== "predict";
 }
 
-/** The teaching-cycle role field, shared VERBATIM by both teach quizzing
- *  tools (owner, 2026-10-09: explain gains the cycle's types — a
- *  free-recall check collapses behind the reveal exactly like a quiz
- *  check; a prediction never does). Bare words, never quoted (the
- *  quote-copy wobble — see the whitehead pins, tests/tool-heal.test.ts). */
-const predictCheckType = Type.Union([Type.Literal("predict"), Type.Literal("check")], {
+/** Purpose is independent of format, arrival, and solution disclosure. */
+const predictCheckType = Type.Union([Type.Literal("predict"), Type.Literal("attempt"), Type.Literal("check")], {
 	description:
-		"REQUIRED — the question's role in the teaching cycle, as a bare word (no quotes): predict = posed BEFORE " +
-		"you teach the step (its own turn; the learner answers, then your teaching resolves it — arrives open, never " +
-		"collapsed); check = posed AFTER the step's teaching is complete (arrives collapsed behind the Check your " +
-		"understanding reveal). ONE question per turn either way.",
+		"predict: anticipate an untaught idea; attempt: work through an idea with guidance available; check: demonstrate understanding or application. These roles do not prescribe a fixed sequence.",
 });
+
+const teachingFeedback = {
+	arrival: Type.Union([Type.Literal("open"), Type.Literal("after_reading")], {
+		description: "open: present the question immediately; after_reading: place it behind ‘Check your understanding’ after accompanying teaching prose.",
+	}),
+	solution: Type.Union([Type.Literal("deferred"), Type.Literal("on_submit")], {
+		description: "deferred: keep the committed answer and explanation hidden after submission until explicitly revealed; on_submit: reveal them when the learner submits.",
+	}),
+};
+
+export function teachingQuestionProblems(input: { type: string; arrival: string; solution: string }): string[] {
+	return input.type !== "check" && (input.arrival !== "open" || input.solution !== "deferred")
+		? ["predict and attempt require arrival: open and solution: deferred."] : [];
+}
 
 
 /** The TEACH-side quiz object. The required pair leads the property
@@ -255,16 +259,12 @@ const predictCheckType = Type.Union([Type.Literal("predict"), Type.Literal("chec
  *  commit to the node and the question's role, then write the question. */
 export const quizInputObject = Type.Object({
 	type: predictCheckType,
+	...teachingFeedback,
 	nodeId: Type.String({
-		description:
-			"REQUIRED plan-tree node id this question is about — must EXACTLY match one of this session's " +
-			"plan_init node slugs (validated at call time; a mismatched id is rejected back to you). " +
-			"The lesson's position on the map derives from these tags (the node the latest tagged question is about is " +
-			"where the map stands; earlier ones count as visited). A node takes as many questions as it deserves: stay on " +
-			"one node for as many turns as the understanding needs — one reasoning step at a time, never rush forward. " +
-			"For off-map checks use ask_user_question.",
+		description: "The exact plan node this question concerns. A position signal, never a completion signal.",
 	}),
 	...quizInputBase.properties,
+	explanation: Type.String({ description: "The reasoning supporting the committed answer. Write it before correctAnswer. Disclosure follows the solution policy." }),
 });
 
 /** The PROBE-side quiz declaration: the shared authoring contract, no
@@ -286,6 +286,8 @@ export const probeQuizInputSchema = quizInputBase;
 export const quizDisplayInputSchema = Type.Object({
 	...quizInputBase.properties,
 	type: Type.Optional(Type.String()),
+	arrival: Type.Optional(teachingFeedback.arrival),
+	solution: Type.Optional(teachingFeedback.solution),
 });
 
 // ─── the explain tool (free-recall quizzing, owner 2026-09-27) ─────────────
@@ -325,16 +327,12 @@ export const explainInputBase = Type.Object({
  *  exactly as the teach quiz's (owner, 2026-10-09). */
 export const explainInputObject = Type.Object({
 	type: predictCheckType,
+	...teachingFeedback,
 	nodeId: Type.String({
-		description:
-			"REQUIRED plan-tree node id this question is about — must EXACTLY match one of this session's " +
-			"plan_init node slugs (validated at call time; a mismatched id is rejected back to you). " +
-			"The lesson's position on the map derives from these tags (the node the latest tagged question is about is " +
-			"where the map stands; earlier ones count as visited). A node takes as many questions as it deserves: stay on " +
-			"one node for as many turns as the understanding needs — one reasoning step at a time, never rush forward. " +
-			"For off-map checks use ask_user_question.",
+		description: "The exact plan node this question concerns. A position signal, never a completion signal.",
 	}),
 	...explainInputBase.properties,
+	correctAnswer: Type.String({ description: "Commit to a complete correct answer and its reasoning before posing the question. Assess the learner against its substantive requirements, accepting equivalent valid reasoning. Do not revise the commitment after seeing the response. Disclosure follows the solution policy." }),
 });
 
 /** The DISPLAY parse for persisted explain calls (tool-parts.ts): the
@@ -345,6 +343,8 @@ export const explainInputObject = Type.Object({
 export const explainDisplayInputSchema = Type.Object({
 	...explainInputBase.properties,
 	type: Type.Optional(Type.String()),
+	arrival: Type.Optional(teachingFeedback.arrival),
+	solution: Type.Optional(teachingFeedback.solution),
 });
 
 /** The explain authoring contract: the commitment must exist. Empty
@@ -410,6 +410,7 @@ export type QuestionMode = SelectMode | "text";
 
 /** Full question data — stored in the `lh_question` custom entry. */
 export interface QuestionData {
+	solution?: "deferred" | "on_submit";
 	id: string;
 	kind: QuestionKind;
 	/** quiz only (teach phase, owner 2026-10-03): the question's role in
@@ -434,6 +435,8 @@ export interface QuestionData {
  *  NO questionId (owner, tool-result diet 2026-10-02): it was the
  *  toolCallId restated — the toolResult message already carries it. */
 export interface QuestionAnswerData {
+	solution?: "deferred" | "on_submit";
+	solutionRequested?: boolean;
 	kind: QuestionKind;
 	/** The persisted call's tool NAME (owner, 2026-10-09): probe-phase
 	 *  calls are `probe`/`recall`, teach calls `quiz`/`explain` — the
@@ -710,6 +713,7 @@ export function buildAnswer(qd: QuestionData, req: AnswerRequest, tool?: string)
 		kind: qd.kind,
 		...(tool ? { tool } : {}),
 		questionType: qd.questionType,
+		solution: qd.solution,
 		questionText: qd.question,
 		options: qd.options.map((o, i) => ({ index: i + 1, label: o.label })),
 		dontKnow: req.dontKnow === true,
@@ -777,8 +781,15 @@ export function dismissedAnswer(kind: QuestionKind, questionText: string): Quest
 }
 
 export function compactAnswerForModel(ad: QuestionAnswerData): Record<string, unknown> {
+	if (ad.solutionRequested) return { kind: ad.kind, solutionRequested: true };
 	if (ad.dismissed) return { kind: ad.kind, dismissed: true };
 	const out: Record<string, unknown> = { kind: ad.kind };
+	if (ad.tool === "retry_question") {
+		out.assisted = true;
+		out.question = ad.questionText;
+		out.referenceAnswer = ad.committed ?? ad.options?.filter(option => ad.correctIndices?.includes(option.index)).map(option => option.label);
+		if (ad.explanation) out.referenceReasoning = ad.explanation;
+	}
 	if (ad.dontKnow) out.dontKnow = true;
 	// Array.isArray: the seam is called with `unknown` answers (test
 	// fixtures, foreign records) — degrade to omission, never crash.

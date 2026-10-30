@@ -42,9 +42,11 @@ import {
 	pendingProblemDismissalOf,
 } from "./native-messages.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
+import { teachingQuestion, canonicalTeachingAnswer, teachingSolutionText } from "./teaching-questions.ts";
 
 /** One client-originated input event (the POST body's `input`). */
 export type ChatInput =
+	| { type: "request_solution"; toolCallId: string }
 	| { type: "text"; text: string }
 	| { type: "answer"; toolCallId: string; answer: QuestionAnswerData }
 	| { type: "continue" }
@@ -146,7 +148,7 @@ export function dismissAppends(record: { messages: LhMessage[] }, input: Dismiss
 	if (!pending || pending.toolCallId !== input.toolCallId) {
 		throw new ChatInputError("dismiss input targets no pending question call");
 	}
-	if (input.answer.kind !== toolQuestionKind(pending.tool)) {
+	if (input.answer.kind !== toolQuestionKind(pending.displayTool ?? pending.tool)) {
 		throw new ChatInputError("dismiss input's answer kind does not match the question");
 	}
 	return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
@@ -160,6 +162,9 @@ export function parseChatInput(input: unknown): ChatInput {
 	if (typeof input !== "object" || input === null) throw new ChatInputError("input must be an object");
 	const i = input as Record<string, unknown>;
 	switch (i.type) {
+		case "request_solution":
+			if (typeof i.toolCallId !== "string" || !i.toolCallId.length) throw new ChatInputError("request_solution requires toolCallId");
+			return { type: "request_solution", toolCallId: i.toolCallId };
 		case "text":
 			if (typeof i.text !== "string" || (i.text as string).trim().length === 0) {
 				throw new ChatInputError("text input requires non-empty text");
@@ -206,6 +211,24 @@ export function inputAppends(
 	input: ChatInput,
 ): LhMessage[] {
 	switch (input.type) {
+		case "request_solution": {
+			try {
+				const q = teachingQuestion(record.messages, input.toolCallId);
+				if (q.answer?.dismissed) throw new Error("Cannot reveal a dismissed question.");
+				const pending = danglingQuestionOf(record.messages);
+				if (pending && pending.toolCallId !== input.toolCallId) throw new Error("Resolve the open question before requesting another solution.");
+				if (!q.answer && pending?.toolCallId !== input.toolCallId) throw new Error("Question is not pending or answered.");
+				if (q.revealed) return [];
+				const result: LhMessage[] = [];
+				if (!q.answer) result.push(newAnswerResult(input.toolCallId, q.call.name, canonicalTeachingAnswer(q)));
+				result.push({
+					id: `solution_${q.root.id}`, role: "custom", customType: "solution-revealed", display: false,
+					content: `The learner requested the solution to question ${input.toolCallId}. The original committed solution is now revealed. Explain the relevant gap; do not treat this request as an incorrect answer.\nQuestion: ${q.input.question}\nCommitted solution:\n${teachingSolutionText(q)}`,
+					details: { questionToolCallId: q.root.id }, timestamp: Date.now(),
+				});
+				return result;
+			} catch (error) { throw new ChatInputError(error instanceof Error ? error.message : String(error)); }
+		}
 		case "text":
 			return [...dismissalConclusion(record), newUserMessage(input.text)];
 		case "answer": {
@@ -213,7 +236,13 @@ export function inputAppends(
 			if (!pending || pending.toolCallId !== input.toolCallId) {
 				throw new ChatInputError("answer input targets no pending question call");
 			}
-			return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
+			let answer = input.answer;
+			if (pending.tool === "retry_question" ||
+				((pending.tool === "quiz" || pending.tool === "explain") && (pending.input as { solution?: unknown })?.solution !== undefined)) {
+				try { answer = canonicalTeachingAnswer(teachingQuestion(record.messages, input.toolCallId), input.answer); }
+				catch (error) { throw new ChatInputError(error instanceof Error ? error.message : String(error)); }
+			}
+			return [newAnswerResult(input.toolCallId, pending.tool, answer)];
 		}
 		case "continue":
 			return dismissalConclusion(record);

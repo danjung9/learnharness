@@ -87,7 +87,7 @@ export function derivePlanStatuses(tree: PlanTree, messages: readonly PartsCarri
 		for (const part of m.parts) {
 			// Either quizzing tool (quiz/explain) tags position — the mechanic
 			// is a settings switch; the fold recognizes both (owner 2026-09-27).
-			if (part.type !== "tool-quiz" && part.type !== "tool-explain") continue;
+			if (part.type !== "tool-quiz" && part.type !== "tool-explain" && part.type !== "tool-retry_question") continue;
 			const nodeId = (part.input as { nodeId?: unknown } | undefined)?.nodeId;
 			if (typeof nodeId !== "string" || !ids.has(nodeId)) continue; // untagged/unknown — moves nothing
 			if (runs.at(-1) !== nodeId) runs.push(nodeId);
@@ -126,6 +126,7 @@ export interface PlanToolResult {
 // ─── the native fold (Wave D: derivePlanStatuses over LhMessage[]) ───────────
 
 import type { LhMessage } from "../native-messages.ts";
+import { teachingQuestionView } from "../teaching-questions.ts";
 
 /** The same derivation over the NATIVE record: quiz CALLS only (any state —
  *  a dangling call still moves position; results feed nothing). */
@@ -136,9 +137,10 @@ export function derivePlanStatusesLh(tree: PlanTree, messages: readonly LhMessag
 		if ((m as { role?: string }).role !== "assistant") continue;
 		const content = (m as { content?: unknown }).content;
 		if (!Array.isArray(content)) continue;
-		for (const block of content as Array<{ type?: string; name?: string; arguments?: unknown }>) {
-			if (block.type !== "toolCall" || (block.name !== "quiz" && block.name !== "explain")) continue;
-			const nodeId = (block.arguments as { nodeId?: unknown } | undefined)?.nodeId;
+		for (const block of content as Array<{ id?: string; type?: string; name?: string; arguments?: unknown }>) {
+			if (block.type !== "toolCall" || (block.name !== "quiz" && block.name !== "explain" && block.name !== "retry_question")) continue;
+			const args = block.name === "retry_question" && block.id ? teachingQuestionView(messages, block.id)?.input : block.arguments;
+			const nodeId = (args as { nodeId?: unknown } | undefined)?.nodeId;
 			if (typeof nodeId !== "string" || !ids.has(nodeId)) continue;
 			if (runs.at(-1) !== nodeId) runs.push(nodeId);
 		}

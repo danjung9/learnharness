@@ -61,6 +61,8 @@ const validQuiz = {
 	correctAnswer: "4",
 	explanation: "Arithmetic.",
 	type: "check",
+		arrival: "after_reading",
+		solution: "on_submit",
 	nodeId: "arith",
 };
 
@@ -215,7 +217,7 @@ describe("quiz tool descriptions carry the complete, phase-correct example", () 
 	it("the canonical body is schema-valid and authoring-clean (never ship a broken exemplar)", () => {
 		assert.deepEqual(quizInputProblems(quizExampleBody), []);
 		assert.equal(Value.Check(probeQuizInputSchema, quizExampleBody), true);
-		const teachExample = { type: "check", nodeId: "chain-rule", ...quizExampleBody };
+		const teachExample = { type: "check", arrival: "after_reading", solution: "deferred", nodeId: "chain-rule", ...quizExampleBody };
 		assert.equal(Value.Check(quizInputObject, teachExample), true);
 	});
 
@@ -236,13 +238,13 @@ describe("quiz tool descriptions carry the complete, phase-correct example", () 
 	it("quiz: the required pair leads the example, with the plan-id caveat", () => {
 		const chatId = newChat("Teacher: description example");
 		const desc = teachQuizToolFor({ chatId, chatStore }).description;
-		const teachExample = { type: "check", nodeId: "chain-rule", ...quizExampleBody };
+		const teachExample = { type: "check", arrival: "after_reading", solution: "deferred", nodeId: "chain-rule", ...quizExampleBody };
 		assert.ok(desc.includes("```json\n" + JSON.stringify(teachExample, null, 2) + "\n```"));
 		// The 2026-10-09 drop-order ruling: type+nodeId LEAD the object —
 		// fields generated first get dropped least.
 		assert.ok(
-			/```json\n\{\n {2}"type": "check",\n {2}"nodeId": "chain-rule",/.test(desc),
-			"type and nodeId lead the serialized example",
+			/```json\n\{\n {2}"type": "check",\n {2}"arrival": "after_reading",\n {2}"solution": "deferred",\n {2}"nodeId": "chain-rule",/.test(desc),
+			"teaching metadata leads the serialized example",
 		);
 		assert.ok(
 			desc.includes("illustrative — copy an exact id from this session's plan_init"),
@@ -295,10 +297,10 @@ describe("tool toggles (core/pending.ts + factories)", () => {
 			spawn: () => {},
 		};
 		const full = Object.keys(createTeacherTools(ctx)).sort();
-		assert.deepEqual(full, ["ask_user_question", "demo", "find", "grep", "ls", "pdf", "plan_init", "quiz", "read", "research", "visual"]);
+		assert.deepEqual(full, ["ask_user_question", "demo", "explain", "find", "grep", "ls", "pdf", "plan_init", "quiz", "read", "research", "retry_question", "reveal_solution", "visual"]);
 
 		const noResearch = Object.keys(createTeacherTools(ctx, { research: false })).sort();
-		assert.deepEqual(noResearch, ["ask_user_question", "demo", "find", "grep", "ls", "pdf", "plan_init", "quiz", "read", "visual"]);
+		assert.deepEqual(noResearch, full.filter(name => name !== "research"));
 
 		// absent = enabled: an empty record and undefined behave identically
 		assert.deepEqual(
@@ -309,7 +311,7 @@ describe("tool toggles (core/pending.ts + factories)", () => {
 
 		// The mechanic switch (owner 2026-09-27): free-recall swaps the teach
 		// quiz for the teach explain — one quizzing tool, whichever is armed.
-		const freeFull = ["ask_user_question", "demo", "explain", "find", "grep", "ls", "pdf", "plan_init", "read", "research", "visual"];
+		const freeFull = full;
 		assert.deepEqual(Object.keys(createTeacherTools(ctx, { explain: true })).sort(), freeFull);
 		assert.deepEqual(
 			Object.keys(createTeacherTools(ctx, { explain: true, research: false })).sort(),
@@ -363,6 +365,8 @@ describe("teachExplainToolFor: the explain variant validates nodeId like the qui
 		correctAnswer: "It ruled out the aether — a stationary aether predicts a fringe shift, and none was seen.",
 		nodeId: "arith",
 		type: "check",
+		arrival: "after_reading",
+		solution: "on_submit",
 	};
 
 	it("accepts a nodeId matching a tree node", async () => {

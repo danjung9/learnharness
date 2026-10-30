@@ -20,7 +20,10 @@ import { answerForPresentation, parseAskInput, parseQuizInput } from "@/src/core
  * client — the card reveals his answer, the committed correct answer, and
  * the explanation, with NO verdict chips (owner ruling 2026-09-27).
  */
-export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionAnswerData; input?: unknown }) {
+export function AnsweredCard({ answer: savedAnswer, input, solutionRevealed = false, onRequestSolution, solutionBusy = false }: {
+	answer: QuestionAnswerData; input?: unknown; solutionRevealed?: boolean;
+	onRequestSolution?: () => void; solutionBusy?: boolean;
+}) {
 	const answer = answerForPresentation(savedAnswer, input);
 	const [whyOpen, setWhyOpen] = useState(false); // the tucked explanation (predictions, owner 2026-10-03)
 	if (answer.dismissed) {
@@ -33,6 +36,8 @@ export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionA
 
 	const isQuiz = answer.kind === "quiz";
 	const isExplain = answer.kind === "explain";
+	const withheld = (input as { solution?: string } | undefined)?.solution === "deferred" && !solutionRevealed;
+	const showVerdict = isQuiz && !withheld;
 	const selectedIdx = new Set(answer.answers.map((a) => a.index));
 	const correctIdx = new Set(answer.correctIndices ?? []);
 	// The question's own context rides the ORIGINAL CALL, not the answer
@@ -71,14 +76,14 @@ export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionA
 					? "Probe"
 					: answer.tool === "recall"
 						? "Recall"
-						: isQuiz
+						: answer.questionType === "attempt" ? "Attempt" : isQuiz
 								? answer.questionType === "predict"
 									? "Prediction"
 									: "Check"
 									: isExplain
 										? "Explain"
 											: "Question"}
-				{isQuiz &&
+				{showVerdict && !answer.solutionRequested &&
 					(answer.dontKnow ? (
 						<span className="rounded bg-muted px-1.5 py-0.5">didn't know</span>
 					) : answer.correct ? (
@@ -102,19 +107,19 @@ export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionA
 				<div className="flex flex-col gap-1.5 text-sm">
 					{answer.options?.map((opt) => {
 						const sel = selectedIdx.has(opt.index);
-						const key = isQuiz && correctIdx.has(opt.index);
+						const key = showVerdict && correctIdx.has(opt.index);
 						return (
 							<div
 								key={opt.index}
 								className={cn(
 									"flex items-center gap-2 rounded-lg border px-3 py-1.5",
 									sel && key && "border-green-500/60 bg-green-500/10",
-									sel && !key && isQuiz && "border-red-500/60 bg-red-500/10",
-									sel && !isQuiz && "border-primary bg-accent",
+									sel && !key && showVerdict && "border-red-500/60 bg-red-500/10",
+									sel && !showVerdict && "border-primary bg-accent",
 									!sel && key && "border-green-500/40",
 								)}
 							>
-								{isQuiz && (
+								{showVerdict && (
 									// Zapf-Dingbats-derived SVG outlines — the exact LaTeX \ding{51}/
 									// \ding{55} hand-drawn shapes (owner, round 6); see ui/glyph-mark.
 									<span
@@ -197,7 +202,7 @@ export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionA
 			{/* px-3→removed: card p-4 + box px-3 double-inset sat the "Why" label deeper
 			    than the option box edges (owner, round 3). Sides flush with everything
 			    else; py-2 stays for vertical air. */}
-			{isQuiz && answer.explanation && (
+			{isQuiz && !withheld && answer.explanation && (
 				/* The TUCKED explanation — ALL questions (owner, 2026-10-07): the
 				   verdict shows, the explanation sits collapsed behind the Why
 				   toggle — viewable, never center stage. Identical to the
@@ -224,12 +229,17 @@ export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionA
 			{/* The explain reveal (owner ruling 2026-09-27): the committed answer
 			    — one field, reasoning included — shown on submit; no verdict,
 			    the model's next reply IS the grading. */}
-			{isExplain && answer.committed && (
+			{isExplain && !withheld && answer.committed && (
 				<div className="mt-3 rounded-lg bg-muted py-2 text-sm text-muted-foreground">
 					<span className="font-medium text-foreground">The answer: </span>
 					<ToolContentResponse className="inline [&>p:first-child]:inline [&>p:first-child]:m-0">{answer.committed}</ToolContentResponse>
 				</div>
 			)}
+			{answer.solutionRequested && <p className="mt-2 text-sm text-muted-foreground">Requested the solution.</p>}
+			{withheld && <div className="mt-3 text-sm text-muted-foreground" data-testid="solution-withheld">
+				<p>Solution withheld while you work through it.</p>
+				{onRequestSolution && <button type="button" disabled={solutionBusy} onClick={onRequestSolution} className="mt-1 text-xs underline disabled:opacity-50">Show solution</button>}
+			</div>}
 		</div>
 		</>
 	);

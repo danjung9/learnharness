@@ -1,5 +1,10 @@
 # The probe→teach agent split & plan-movement semantics
 
+**2026-10-30 amendment:** [Adaptive teaching](adaptive-teaching.md) updates
+teaching question formats, question roles and solution disclosure. Probing's
+format setting remains; the teacher has both question formats plus retry and
+reveal tools. The split and position-versus-completion semantics remain.
+
 Shared understanding reached 2026-09-11 (user + master session). This is the
 convergence record — the decided design, with reasoning. It is not a task
 list; implementation waves are planned against it.

@@ -50,7 +50,7 @@ const QUIZ_INPUT = {
 	options: [{ label: "Venus" }, { label: "Mercury" }],
 	correctAnswer: "Mercury",
 	explanation: "Mercury is the innermost planet.",
-	type: "check",
+	type: "check", arrival: "after_reading", solution: "on_submit",
 	nodeId: "planet-order",
 };
 
@@ -153,7 +153,9 @@ describe("failed-response Retry (issue #110)", () => {
 		assert.equal(results.length, 1, "the learner's answer was not submitted twice");
 		const result = results[0]!;
 		assert.ok(result.role === "toolResult");
-		assert.deepEqual(result.details, JSON.parse(JSON.stringify(answer)));
+		const accepted = before.find(m => m.role === "toolResult" && m.toolCallId === "call-1");
+		assert.ok(accepted?.role === "toolResult");
+		assert.deepEqual(result.details, accepted.details, "Retry preserves the accepted canonical answer exactly");
 		assert.match(JSON.stringify(saved.at(-1)), /Mercury it is/);
 		assert.deepEqual(contexts.at(-1), ["user", "assistant", "toolResult"]);
 		assert.match(histories.at(-1)!, /Mercury is the innermost/);

@@ -74,6 +74,7 @@ export interface QuestionDockProps {
 	reveal?: boolean;
 	onExpand: () => void;
 	onSubmit: (output: QuestionAnswerData) => void;
+	onRequestSolution?: () => void;
 	/** Restore only this call's unconfirmed submission after recovery. */
 	initialDraft?: QuestionFormDraft;
 	onSaveDraft?: (draft: QuestionFormDraft) => void;
@@ -106,6 +107,7 @@ export function QuestionDock({
 	reveal = false,
 	onExpand,
 	onSubmit,
+	onRequestSolution,
 	initialDraft,
 	onSaveDraft,
 	onEscape,
@@ -151,7 +153,7 @@ export function QuestionDock({
 						(canonical === "quiz" || canonical === "explain") &&
 						normalizeQuizType((parsed as { type?: unknown }).type) === "predict"
 							? "Prediction"
-							: undefined
+							: normalizeQuizType((parsed as { type?: unknown }).type) === "attempt" ? "Attempt" : undefined
 					}
 				/>
 			)}
@@ -163,6 +165,7 @@ export function QuestionDock({
 					phase={phase}
 					active={expanded}
 					onSubmit={onSubmit}
+					onRequestSolution={onRequestSolution}
 					initialDraft={initialDraft}
 					onSaveDraft={onSaveDraft}
 					onEscape={onEscape}
@@ -260,6 +263,7 @@ function QuestionDockForm({
 	phase = "probe",
 	active,
 	onSubmit,
+	onRequestSolution,
 	initialDraft,
 	onSaveDraft,
 	onEscape,
@@ -296,7 +300,8 @@ function QuestionDockForm({
 			kind,
 			// The role (owner 2026-10-03): predict questions gate by it in the
 			// view (never collapsed) and the answered card tucks the explanation.
-			questionType: kind === "quiz" ? normalizeQuizType((input as { type?: unknown }).type) : undefined,
+			questionType: normalizeQuizType((input as { type?: unknown }).type),
+			solution: (input as { solution?: "deferred" | "on_submit" }).solution,
 			question: input.question,
 			context: input.details,
 			mode,
@@ -562,6 +567,11 @@ function QuestionDockForm({
 
 	return (
 		<div ref={rootRef} data-testid="question-dock">
+			{qd.solution === "deferred" && onRequestSolution && <button
+				type="button" disabled={compactionRunning} onClick={onRequestSolution}
+				onKeyDown={event => { if (event.key === "Enter" || event.key === " ") event.stopPropagation(); }}
+				className="mx-4 mt-2 text-xs text-muted-foreground underline disabled:opacity-50"
+			>Show solution</button>}
 			{/* Question area — scrolls internally if very tall; the bottom row stays put.
 			    Capped by the measured column (--dock-max-h; the old fixed 55dvh cut
 			    long questions short — owner round, 2026-10-05). */}
@@ -571,7 +581,7 @@ function QuestionDockForm({
 						? "Probe"
 						: toolName === "recall"
 							? "Recall"
-							: kind === "quiz"
+							: qd.questionType === "attempt" ? "Attempt" : kind === "quiz"
 								? qd.questionType === "predict"
 									? "Prediction"
 									: "Check"
@@ -838,7 +848,7 @@ function QuestionDockForm({
 			    send. Select modes get "Your thinking" (Enter makes a newline — it
 			    is for dumping, soon dictated; the button submits); text mode
 			    keeps "Your answer" with Enter-to-submit. */}
-			<form
+		<form
 				className="border-t border-border/60 p-1.5"
 				onSubmit={(e) => {
 					e.preventDefault();

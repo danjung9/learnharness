@@ -32,6 +32,7 @@ function isToolUIPart(part: UIMessage["parts"][number]): boolean {
  * here. This file carries only the question gate and the shared scan helper.
  */
 export interface PendingToolCall {
+	displayTool?: "quiz" | "explain";
 	toolCallId: string;
 	tool: string;
 	/** Tool input (quiz/ask args) — lets the composer pick note vs answer mode. */
@@ -51,6 +52,7 @@ export interface PendingQuestion extends PendingToolCall {
 /** Tools that render in the question dock and gate the composer. The
  * probe-phase names join their teach twins; old records keep teach names. */
 export const QUESTION_TOOLS = [
+	"retry_question",
 	"quiz",
 	"probe",
 	"ask_user_question",

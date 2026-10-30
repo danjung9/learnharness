@@ -19,7 +19,7 @@ import { healToolRecord, withArgumentHeal } from "./tools/heal.ts";
 import { sendToUserTool } from "./tools/send-to-user.ts";
 import { createReadTool, readTool } from "./tools/read.ts";
 import { CLAUDE_CODE_PROVIDER } from "./claude-code/constants.ts";
-import { quizInputObject, quizInputProblems } from "../core/question-core.ts";
+import { quizInputObject, quizInputProblems, teachingQuestionProblems } from "../core/question-core.ts";
 import { QUESTION_TOOLS, type EnabledTools } from "../core/pending.ts";
 import { toLlmMessages, nativeInputCause, PRACTICE_PROBLEM_TOOL } from "../core/native-messages.ts";
 import type { ChatGPTRequestCycle } from "./chatgpt-request-cycle.ts";
@@ -312,7 +312,7 @@ export function bareQuestionTools(): Record<string, AgentTool<any>> {
 		parameters: quizInputObject,
 		executionMode: "sequential",
 		execute: async (_toolCallId, input) => {
-			const problems = quizInputProblems(input);
+			const problems = [...quizInputProblems(input), ...teachingQuestionProblems(input)];
 			if (problems.length > 0) return invalidInputResult("quiz", problems);
 			return questionResult();
 		},

@@ -39,6 +39,7 @@ import { jobStore } from "../src/store/jobs.ts";
 import { buildAnswer, dismissedAnswer, normalizeOptions, resolveCorrect, type QuestionData } from "../src/core/question-core.ts";
 import { danglingQuestionOf, endsInDismissal, needsContinuation, newAnswerResult, newUserMessage } from "../src/core/native-messages.ts";
 import { projectView } from "../src/core/view.ts";
+import { teachingQuestion, canonicalTeachingAnswer } from "../src/core/teaching-questions.ts";
 import type { PiEngine } from "../src/agent/models.ts";
 import type { LhMessage } from "../src/core/native-messages.ts";
 
@@ -65,7 +66,7 @@ const QUIZ_INPUT = {
 	],
 	correctAnswer: "Mercury",
 	explanation: "Mercury is the innermost planet.",
-	type: "check",
+	type: "check", arrival: "after_reading", solution: "on_submit",
 	nodeId: "planet-order",
 };
 
@@ -660,7 +661,7 @@ describe("teacher chat flow (scripted model)", () => {
 		// same turn. This pins that whole mechanism (the live Nietzsche bug).
 		const BAD_QUIZ_INPUT = {
 			question: "What is Nietzsche's genealogical claim about religion?",
-			type: "check",
+			type: "check", arrival: "after_reading", solution: "on_submit",
 			nodeId: "genealogy",
 			options: [{ label: "A cultural diagnosis" }, { label: "Atheism as a conclusion" }],
 			correctAnswer: "cultural-diagnosis", // the exact live failure shape: a slug, no match
@@ -740,7 +741,7 @@ describe("teacher chat flow (scripted model)", () => {
 		// model's clean retry becomes the pending quiz.
 		const STRINGY_QUIZ_INPUT = {
 			question: "Lewis's indexical analysis of 'actual' — which is it?",
-			type: "check",
+			type: "check", arrival: "after_reading", solution: "on_submit",
 			nodeId: "indexicals",
 			options: "definitely not a JSON array — denim all the way down", // ← unhealable garbage
 			correctAnswer: "indexical",
@@ -1294,6 +1295,54 @@ describe("background-turn runner (owner ruling 2026-09-25: every turn is a serve
 	});
 });
 
+it("adaptive teaching: attempt, hint, immutable retry, reveal, then independent free response", async () => {
+	const attempt = { ...QUIZ_INPUT, type: "attempt", arrival: "open", solution: "deferred" };
+	const transfer = {
+		type: "check", nodeId: "planet-order", arrival: "open", solution: "deferred",
+		question: "What would change about observing Mercury if its orbit were much larger? Explain your reasoning.",
+		correctAnswer: "Its possible angular separation from the Sun would grow, making it easier to observe away from twilight.",
+	};
+	const { engine } = scriptedTeacher(() => [
+		() => fauxAssistantMessage([fauxToolCall("quiz", attempt, { id: "adaptive-q" })], { stopReason: "toolUse" }),
+		() => fauxAssistantMessage([fauxText("Compare the planets' distances from the Sun."), fauxToolCall("retry_question", { questionToolCallId: "adaptive-q" }, { id: "adaptive-r" })], { stopReason: "toolUse" }),
+		context => {
+			assert.match(JSON.stringify(context.messages), /assisted/);
+			return fauxAssistantMessage([fauxToolCall("reveal_solution", { questionToolCallId: "adaptive-r" }, { id: "adaptive-reveal" })], { stopReason: "toolUse" });
+		},
+		() => fauxAssistantMessage([fauxText("Now apply the orbital relationship to a new situation."), fauxToolCall("explain", transfer, { id: "adaptive-transfer" })], { stopReason: "toolUse" }),
+		context => {
+			assert.match(JSON.stringify(context.messages), /solutionRequested/);
+			return fauxAssistantMessage([fauxText("A larger orbit permits a larger angular separation from the Sun.")]);
+		},
+	]);
+	const chat = createConfiguredChat("Adaptive teaching integration");
+	createdChats.push(chat.id);
+	const factory: Parameters<typeof handleChatRequest>[1] = opts => createTeacherAgent(
+		{ chatId: chat.id, chatStore, jobStore, spawn: () => {} }, { ...opts, engine });
+	await drainTurn(post(chat.id, { type: "text", text: "Start the agreed lesson." }), factory);
+	const respond = async (id: string, value: string) => {
+		const q = teachingQuestion(chatStore.getChat(chat.id)!.messages, id);
+		const answer = canonicalTeachingAnswer(q);
+		delete answer.solutionRequested;
+		answer.answers = [{ index: 1, value, label: value }];
+		await drainTurn(post(chat.id, { type: "answer", toolCallId: id, answer }), factory);
+	};
+	await respond("adaptive-q", "Venus");
+	let record = chatStore.getChat(chat.id)!;
+	assert.equal(danglingQuestionOf(record.messages)?.tool, "retry_question");
+	assert.equal(teachingQuestion(record.messages, "adaptive-r").root.id, "adaptive-q");
+	assert.equal(teachingQuestion(record.messages, "adaptive-q").revealed, false);
+	await respond("adaptive-r", "Mercury");
+	record = chatStore.getChat(chat.id)!;
+	assert.equal(teachingQuestion(record.messages, "adaptive-q").revealed, true);
+	assert.equal(danglingQuestionOf(record.messages)?.toolCallId, "adaptive-transfer");
+	await drainTurn(post(chat.id, { type: "request_solution", toolCallId: "adaptive-transfer" }), factory);
+	record = chatStore.getChat(chat.id)!;
+	assert.equal(teachingQuestion(record.messages, "adaptive-transfer").answer?.solutionRequested, true);
+	assert.equal(teachingQuestion(record.messages, "adaptive-transfer").answer?.correct, undefined);
+	assert.equal(danglingQuestionOf(record.messages), null);
+});
+
 // ─── the explain mechanic end-to-end (free-recall, owner 2026-09-27) ───────
 
 it("explain tool call persists as a pending part; the free-text answer reveals the commitment and reaches the model", async () => {
@@ -1301,7 +1350,7 @@ it("explain tool call persists as a pending part; the free-text answer reveals t
 		question: "Explain why Mercury is hard to observe.",
 		correctAnswer: "Its small angular separation from the Sun — it never strays far from the Sun in our sky.",
 		nodeId: "planet-order",
-		type: "check", // the teach explain's role field (owner, 2026-10-09)
+		type: "check", arrival: "after_reading", solution: "on_submit", // the teach explain's role field (owner, 2026-10-09)
 	};
 	const { engine, calls } = scriptedTeacher((cs) => [
 		(context) => {
@@ -1324,7 +1373,7 @@ it("explain tool call persists as a pending part; the free-text answer reveals t
 		{ chatId: chat.id, chatStore, jobStore, spawn: () => {} },
 		{ explain: true },
 	);
-	assert.ok(tools.explain && !tools.quiz, "explain armed, quiz dropped — one quizzing tool");
+	assert.ok(tools.explain && tools.quiz, "both teaching formats are available regardless of probing preference");
 
 	const factory: Parameters<typeof handleChatRequest>[1] = (opts) =>
 		createTeacherAgent(undefined, { engine, messages: opts.messages, tools });

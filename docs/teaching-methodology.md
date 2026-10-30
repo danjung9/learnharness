@@ -1,5 +1,11 @@
 # The theory of learning and teaching
 
+**2026-10-30 amendment:** The current implementation follows
+[adaptive teaching](adaptive-teaching.md). The original theory below is
+historical context. Its fixed cadence and claims that subjective obviousness
+guarantees understanding or retention are superseded by learner-generated
+reasoning, adaptive guidance, independent application and transfer checks.
+
 *(Owner theory, formulated 2026-09-24. This document is the canonical theory layer — the system prompts are a compression of it. Scope: the theory itself, and what it demands of the implementation. Not an implementation spec.)*
 
 ## 1. Two knowledge states

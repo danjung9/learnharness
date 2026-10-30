@@ -412,7 +412,7 @@ export function Chat({
 				const question = (p.input as { question?: string } | null)?.question ?? "";
 				const reading = readingThinkingRef.current.trim() || undefined;
 				clearReadingThinking();
-				const answer = dismissedAnswer(toolQuestionKind(p.tool), question);
+				const answer = dismissedAnswer(toolQuestionKind(p.displayTool ?? p.tool), question);
 				void dismissQuestion(
 					p.toolCallId,
 					reading ? { ...answer, readingThinking: reading } : answer,
@@ -1581,12 +1581,16 @@ export function Chat({
 													case "tool-probe":
 													case "tool-ask_user_question":
 													case "tool-explain":
+													case "tool-retry_question":
 													case "tool-recall": {
 														// Pending/streaming questions live in the dock, not the
 														// transcript; answered ones render as graded records.
 														if (part.state === "output-available") {
 															return (
-																<AnsweredCard key={pi} answer={part.output as QuestionAnswerData} input={part.input} />
+																<AnsweredCard key={pi} answer={part.output as QuestionAnswerData} input={part.input}
+																	solutionRevealed={part.solutionRevealed === true}
+																	solutionBusy={busy || (!!pending && pending.toolCallId !== part.toolCallId)}
+																	onRequestSolution={() => { if (part.toolCallId) void send({ type: "request_solution", toolCallId: part.toolCallId }); }} />
 															);
 														}
 														return null;
@@ -1679,6 +1683,7 @@ export function Chat({
 				    fold) and NEVER overlaps the composer. */}
 				<DockOverlay
 					pending={pending}
+					onRequestSolution={() => { if (pending && !busy) void send({ type: "request_solution", toolCallId: pending.toolCallId }); }}
 					initialQuestionDraft={pending ? questionDraft(pending.key)?.form : undefined}
 					onSaveQuestionDraft={(form) => { if (pending) saveQuestionDraft(pending.key, { form }); }}
 					practice={activeProblem}
@@ -1910,6 +1915,7 @@ export function shouldStampGeometryMute(nextH: number, prevH: number, pending: b
 
 function DockOverlay({
 	pending,
+	onRequestSolution,
 	initialQuestionDraft,
 	onSaveQuestionDraft,
 	practice,
@@ -1962,6 +1968,7 @@ function DockOverlay({
 	pricing?: SessionPricing;
 	composer: React.ReactNode;
 	onSubmitAnswer: (output: QuestionAnswerData) => void;
+	onRequestSolution: () => void;
 	/** The model control's pass-through (the stats bar hosts it). */
 	chatId: string;
 	onModelChange: (model: string | undefined) => void;
@@ -2374,7 +2381,7 @@ function DockOverlay({
 						>
 							{pending ? (
 								<QuestionDock
-									toolName={pending.tool as "quiz" | "probe" | "ask_user_question" | "explain" | "recall"}
+									toolName={(pending.displayTool ?? pending.tool) as "quiz" | "probe" | "ask_user_question" | "explain" | "recall"}
 									toolCallId={pending.toolCallId}
 									input={pending.input as never}
 									expanded={expanded}
@@ -2382,6 +2389,7 @@ function DockOverlay({
 									phase={phase}
 									onExpand={expandAndReveal}
 									onSubmit={onSubmitAnswer}
+									onRequestSolution={onRequestSolution}
 									initialDraft={initialQuestionDraft}
 									onSaveDraft={onSaveQuestionDraft}
 									onEscape={dictationCancel}

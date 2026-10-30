@@ -1,5 +1,7 @@
 import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { teachingFeedbackTools } from "./tools/teaching-feedback.ts";
+import { teachingQuestionProblems } from "../core/question-core.ts";
 import { invalidInputResult, questionResult, serverExecute } from "./tool-execute.ts";
 import {
 	askInputSchema,
@@ -155,7 +157,7 @@ function quizDescription(delta: { name: "quiz" | "probe"; nodeId: boolean; types
 			? "Every call declares `type` — the question's role in the teaching cycle; the field's own description says when each kind fires. "
 			: "") +
 		(delta.nodeId
-			? "Set `nodeId` (required) to the plan node this question is about — validated at call time against the session's plan map. For off-map checks use ask_user_question. "
+			? "Set `nodeId` (required) to the plan node this question is about — validated at call time against the session's plan map. For a missing graded-question node, update the plan map first. "
 			: "") +
 		"ONE question per turn: call a single " +
 		delta.name +
@@ -163,9 +165,9 @@ function quizDescription(delta: { name: "quiz" | "probe"; nodeId: boolean; types
 	// Phase-correct shape: the teach example LEADS with the required pair
 	// (type, nodeId — the 2026-10-09 drop-order ruling); the probe example
 	// carries no phase metadata at all, exactly like the probe schema.
-	const example = delta.nodeId ? { type: "check" as const, nodeId: "chain-rule", ...quizExampleBody } : quizExampleBody;
+	const example = delta.nodeId ? { type: "check" as const, arrival: "after_reading", solution: "deferred", nodeId: "chain-rule", ...quizExampleBody } : quizExampleBody;
 	return (
-		base +
+		(delta.nodeId ? base.replace("reveals the correct answer, and ", "discloses the solution according to the solution field, and ").replace("for non-graded questions use ask_user_question instead.", "use explain for graded free response or ask_user_question for preferences.") : base) +
 		"\nExample arguments — copy the escaping exactly: inside JSON strings a LaTeX backslash is \\\\ and a newline is \\n.\n```json\n" +
 		JSON.stringify(example, null, 2) +
 		"\n```" +
@@ -186,7 +188,7 @@ function explainDescription(name: "explain" | "recall", nodeId: boolean): string
 		" always has one. THE COMMITMENT RULE: " +
 		"correctAnswer is the FULL correct answer in your own words, reasoning included, COMMITTED before he ever " +
 		"sees the question. When his answer returns, grade it strictly against the commitment — never revise it " +
-		"after seeing his words. He sees the committed answer on submit. " +
+		"after seeing his words. " + (nodeId ? "Disclosure follows the solution field. Accept equivalent valid reasoning; acknowledge a flawed reference explicitly. " : "He sees the committed answer on submit. ") +
 		(nodeId
 			? "Set `nodeId` (required) to the plan node this question is about — validated at call time against the session's plan map. "
 			: "") +
@@ -229,7 +231,7 @@ export function teachExplainToolFor(
 		prepareArguments: prepareQuestionArguments,
 		executionMode: "sequential",
 		execute: async (_toolCallId, input) => {
-			const problems = [...explainInputProblems(input)];
+			const problems = [...explainInputProblems(input), ...teachingQuestionProblems(input)];
 			const nodeIdProblemText = nodeIdProblem(ctx, input.nodeId);
 			if (nodeIdProblemText) problems.push(nodeIdProblemText);
 			if (problems.length > 0) return invalidInputResult("explain", problems);
@@ -381,7 +383,7 @@ export function teachQuizToolFor(ctx: Pick<PlanToolContext, "chatId" | "chatStor
 		prepareArguments: prepareQuestionArguments,
 		executionMode: "sequential",
 		execute: async (_toolCallId, input) => {
-			const problems = [...quizInputProblems(input)];
+			const problems = [...quizInputProblems(input), ...teachingQuestionProblems(input)];
 			const nodeIdProblemText = nodeIdProblem(ctx, input.nodeId);
 			if (nodeIdProblemText) problems.push(nodeIdProblemText);
 			if (problems.length > 0) return invalidInputResult("quiz", problems);
@@ -435,14 +437,11 @@ export function createTeacherTools(
 	ctx: TeacherToolContext,
 	enabled?: EnabledTools,
 ): Record<string, AgentTool<any>> {
-	// Quizzing mechanics (owner 2026-09-27): free-recall swaps the teach
-	// quiz for the teach explain — one quizzing tool at a time, whichever
-	// the settings arm. ask stays always-on.
-	const mechanics = quizMechanics(enabled);
-	// Same widening as the prober's (see above) — the conditional spread of
-	// two differently-typed literals collapses into an unusable union type.
-	const quizzing: Record<string, AgentTool<any>> =
-		mechanics === "free" ? { explain: teachExplainToolFor(ctx) } : { quiz: teachQuizToolFor(ctx) };
+	// The format preference belongs to probing. Teaching chooses a format
+	// per question and retains explicit retry/disclosure tools.
+	const quizzing: Record<string, AgentTool<any>> = {
+		quiz: teachQuizToolFor(ctx), explain: teachExplainToolFor(ctx), ...teachingFeedbackTools(ctx),
+	};
 	// healToolRecord — same standard as the prober's registry (above).
 	return healToolRecord(
 		filterEnabledTools(

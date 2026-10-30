@@ -1437,16 +1437,16 @@ describe("prompt composition", () => {
 		const teacher = composeInstructions("teacher");
 		// the T2a doctrine fragment (user-locked wording 2026-09-15): verbatim presence
 		for (const pin of [
-			"Answerable by reasoning from the session",
-			"Never just reciting your words back",
-			"Prefer problems that apply the knowledge",
-			"Catch confusion early, and make it nameable",
+			"distinguish understanding from recognition",
+			"Prefer reasoning, justification, application",
+			"plausible consequences",
+			"Check independence with a fresh task",
 		]) {
 			assert.ok(teacher.includes(pin), `teacher prompt lost the principle: ${pin}`);
 		}
 		// it loads in sorted fragment order: right after 20-teaching, before 30-jobs
 		assert.ok(
-			teacher.indexOf("Question principles") > teacher.indexOf("# Teach — one step at a time"),
+			teacher.indexOf("Questions as evidence") > teacher.indexOf("# Teach from the evidence"),
 			"principles sit after the teaching loop",
 		);
 		// the prober's doctrine: the "no rush" framing is gone, quick measurement in
@@ -1462,10 +1462,10 @@ describe("prompt composition", () => {
 	it("the predict-check cycle composes into the teacher; the craft chunk reaches BOTH agents (owner 2026-10-03)", () => {
 		const teacher = composeInstructions("teacher");
 		// the cycle doctrine (28-predictions.md) — teacher-only
-		assert.ok(teacher.includes("predict → teach → check"), "the cycle line is in");
-		assert.ok(teacher.includes('The prediction (`type: "predict"`)'), "the prediction role section is in");
-		assert.ok(teacher.includes("Skip the prediction"), "the skip rule is in");
-		assert.ok(teacher.includes('The check (`type: "check"`)'), "the check role section is in");
+		assert.ok(teacher.includes("There is no mandatory predict–teach–check cycle."), "adaptive sequencing composes");
+		assert.ok(teacher.includes("Use predict when"), "prediction role composes");
+		assert.ok(teacher.includes("Use attempt for"), "guided generation composes");
+		assert.ok(teacher.includes("Use check to"), "verification role composes");
 		// the craft + thinking channels (shared/20-question-tools.md) — BOTH agents
 		const prober = composeInstructions("prober");
 		for (const [name, prompt] of [

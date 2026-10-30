@@ -324,7 +324,7 @@ describe("send_to_user native flow (offline)", () => {
 	it("output + question streams, persists natively, replays, and reloads as prose before the question", async () => {
 		const lesson = "**Synthetic lesson:** four is twice two. $2 + 2 = 4$";
 		const quiz = {
-			type: "check", nodeId: "synthetic", question: "What is two plus two?",
+			type: "check", arrival: "after_reading", solution: "on_submit", nodeId: "synthetic", question: "What is two plus two?",
 			options: [{ label: "Four", value: "4" }, { label: "Five", value: "5" }],
 			correctAnswer: "4", explanation: "Add two pairs.",
 		};

@@ -39,6 +39,7 @@ import { activeCompactionOf, type CompactionDetails } from "./compaction.ts";
 import { QUESTION_TOOLS } from "./pending.ts";
 import type { SubagentArtifactData, SubagentResultMeta } from "./contracts/jobs.ts";
 import type { PlanBlockData } from "./contracts/chat.ts";
+import { teachingQuestionView } from "./teaching-questions.ts";
 
 /** A view part — the loose part vocabulary the renderers consume (the same
  *  shape names the pre-Wave-D UIMessage dialect used, so the renderer
@@ -229,6 +230,14 @@ export function projectView(messages: readonly LhMessage[], live?: LiveTurnState
 					reasoning.push({ type: "reasoning", id: `${m.id}-r${reasoningN++}`, text: block.thinking, state: "done" });
 				} else if (block.type === "toolCall") {
 					const part = toolPartOf(block, live, streamingMessage);
+					if (block.name === "retry_question" || block.name === "quiz" || block.name === "explain") {
+						const question = teachingQuestionView(messages, block.id);
+						if (question) {
+							part.input = question.input;
+							part.displayTool = question.tool;
+							part.solutionRevealed = question.revealed;
+						}
+					}
 					if ((QUESTION_TOOLS as readonly string[]).includes(block.name)) {
 						part.sourceMessageId = m.id;
 						part.sourceContentIndex = contentIndex;
@@ -453,6 +462,7 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 			return;
 		}
 		case "problem-dismissed":
+		case "solution-revealed":
 			// UI-only (the ask-style dismissal): the synthesized conclude
 			// pair — which rides the NEXT input — carries the record's face.
 			return;

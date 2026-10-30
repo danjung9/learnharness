@@ -369,8 +369,8 @@ describe("practice prompt composition (own directory + the formatting appendix)"
 		assert.ok(!teacher.includes("Typically 5–15 nodes"), "the node-count cap is dead");
 		assert.match(teacher, /No size ceiling/);
 		assert.match(teacher, /never rush the repair/);
-		assert.match(teacher, /one and only pace/);
-		assert.match(teacher, /nothing to rush/, "the goal reiteration composes");
+		assert.match(teacher, /build missing ground in manageable steps/);
+		assert.match(teacher, /guidance remains available/, "adaptive guidance composes");
 	});
 
 	it("the prober doctrine steers difficulty by evidence (owner round, 2026-10-07)", () => {

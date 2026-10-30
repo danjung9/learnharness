@@ -69,7 +69,7 @@ describe("the schema's argument order (reasoning before the pick)", () => {
 				`explanation must precede correctAnswer in the emitted schema (got: ${keys.join(", ")})`,
 			);
 			assert.deepEqual(keys, schema === quizInputSchema
-				? ["type", "nodeId", "question", "options", "multiSelect", "explanation", "correctAnswer", "details"]
+				? ["type", "arrival", "solution", "nodeId", "question", "options", "multiSelect", "explanation", "correctAnswer", "details"]
 				: ["question", "options", "multiSelect", "explanation", "correctAnswer", "details"]);
 		}
 	});
@@ -82,6 +82,8 @@ describe("quizInputSchema / quizInputProblems (the authoring contract)", () => {
 		correctAnswer: "Mercury",
 		explanation: "Mercury is the innermost planet.",
 		type: "check",
+		arrival: "after_reading",
+		solution: "on_submit",
 		nodeId: "planet-order",
 	};
 
@@ -667,7 +669,7 @@ describe("explainInputBase / explainInputProblems (the commitment contract)", ()
 		// least, and the order doubles as the authoring order (role, target,
 		// then the question). Mirrors the quiz reorder (see above).
 		const keys = Object.keys(explainInputObject.properties);
-		assert.deepEqual(keys, ["type", "nodeId", ...Object.keys(explainInputBase.properties)]);
+		assert.deepEqual(keys, ["type", "arrival", "solution", "nodeId", ...Object.keys(explainInputBase.properties)]);
 	});
 
 	it("an empty commitment is the one authoring problem", () => {
@@ -731,6 +733,8 @@ describe("the quiz role field (predict | check)", () => {
 		correctAnswer: "Mercury",
 		explanation: "Mercury is the innermost planet.",
 		type: "check",
+		arrival: "after_reading",
+		solution: "on_submit",
 		nodeId: "planet-order",
 	};
 	it("the teach schema REQUIRES type; the probe schema has no such field", () => {

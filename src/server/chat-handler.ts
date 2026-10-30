@@ -323,7 +323,7 @@ export async function handleChatInput(
 	// the sibling question permanently pre-fix). Nothing else can generate
 	// while a question dangles (job wakes wait, continuation folds refuse,
 	// the composer gates), so adjacency holds by construction.
-	if (input.type === "answer" && danglingQuestionOf([...record.messages, ...appends]) !== null) {
+	if ((input.type === "answer" || input.type === "request_solution") && danglingQuestionOf([...record.messages, ...appends]) !== null) {
 		const merged = [...record.messages, ...appends];
 		try { stores.chatStore.saveMessages(chatId, merged); }
 		catch (err) {

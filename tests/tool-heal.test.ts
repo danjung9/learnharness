@@ -55,6 +55,8 @@ function whiteheadQuiz(type: unknown, correctAnswer: unknown) {
 		explanation: "What truly *is* cannot come to be or pass away — the flux is appearance.",
 		correctAnswer,
 		type,
+		arrival: "open",
+		solution: "deferred",
 		nodeId: "experience-first",
 	};
 }
